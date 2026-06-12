@@ -1,0 +1,658 @@
+---
+title: "Genomic Drivers of Survival in Luminal A and B Breast Cancer"
+author: "mp2242@ice.cam.ac.uk"
+output:
+  rmdformats::readthedown:
+    css: https://raw.githubusercontent.com/MalPatel21/TP53_PIK3CA_Breast_Cancer_Analysis/refs/heads/main/File_setup/styles.css
+    theme: readable
+bibliography: https://raw.githubusercontent.com/MalPatel21/TP53_PIK3CA_Breast_Cancer_Analysis/refs/heads/main/File_setup/references.bib
+csl: https://raw.githubusercontent.com/MalPatel21/TP53_PIK3CA_Breast_Cancer_Analysis/refs/heads/main/File_setup/vancouver.csl
+
+---
+
+
+# Coversheet
+
+![mod3_covsheet-1](https://raw.githubusercontent.com/MalPatel21/TP53_PIK3CA_Breast_Cancer_Analysis/main/Coversheet/mod3_covsheet-1.png)
+![mod3_covsheet-2](https://raw.githubusercontent.com/MalPatel21/TP53_PIK3CA_Breast_Cancer_Analysis/main/Coversheet/mod3_covsheet-2.png)
+
+![mod3_covsheet-3](https://raw.githubusercontent.com/MalPatel21/TP53_PIK3CA_Breast_Cancer_Analysis/main/Coversheet/mod3_covsheet-3.png)
+![mod3_covsheet-4](https://raw.githubusercontent.com/MalPatel21/TP53_PIK3CA_Breast_Cancer_Analysis/main/Coversheet/mod3_covsheet-4.png)
+# NOTES
+- density as a percentage
+- make sure to add a disclosure that the scale for density in pca covers like the majority of points but certain points are above the limit presented on that color scale (we selected .15)
+#FOR NOW
+
+```{r setup, echo=FALSE}
+#===============================================================================
+# Data Importation and Consolidation (NOTE MAKE SURE TO CAHNGE PATHS AND SPECIFICY IN THE COMMENTS THAT THE DATASET CANT BE PUBLISHED BC ITS PRIVATE INFO)
+#===============================================================================
+
+# =========================
+# PACKAGE MANAGEMENT
+# =========================
+
+required_packages <- c(
+  "tidyverse",
+  "lubridate",
+  "skimr",
+  "ggplot2",
+  "svglite",
+  "ggpointdensity",
+  "viridis",
+  "ggrepel"
+)
+
+# Install any missing packages
+installed_packages <- rownames(installed.packages())
+
+for (pkg in required_packages) {
+  if (!(pkg %in% installed_packages)) {
+    install.packages(pkg, dependencies = TRUE)
+  }
+}
+
+# Load all packages
+lapply(required_packages, library, character.only = TRUE)
+
+
+# =========================
+# Data is SENSITIVE so i am unable to publish the data. Please replace the respective pathway for df_clean_final and df_moca_final for with where your data is stored.
+# =========================
+
+# # Load data
+# demo <- read.csv("C:/Users/Malik/Desktop/Module_5/Demographics_20Mar2026.csv", na.strings = c("", "NA"))
+# moca <- read.csv("C:/Users/Malik/Desktop/Module_5/Montreal_Cognitive_Assessment__MoCA__22Mar2026.csv", na.strings = c("", "NA"))
+# updrs <- read.csv("C:/Users/Malik/Desktop/Module_5/MDS-UPDRS_Part_III_22Mar2026.csv", na.strings = c("", "NA"))
+# 
+# # Merge datasets
+# df <- updrs %>%
+#   left_join(moca, by = c("PATNO", "EVENT_ID")) %>%
+#   left_join(demo %>% select(PATNO, SEX, BIRTHDT), by = "PATNO")
+# 
+# # Fix date columns
+# df <- df %>%
+#   rename(INFODT = INFODT.x) %>%
+#   select(-INFODT.y)
+# 
+# # Create AGE
+# df <- df %>%
+#   mutate(
+#     BIRTHDT = mdy(BIRTHDT),
+#     INFODT = mdy(INFODT),
+#     AGE = as.numeric(difftime(INFODT, BIRTHDT, units = "days")) / 365.25
+#   )
+# 
+# # Ensure numeric columns
+# df <- df %>%
+#   mutate(
+#     NP3TOT = as.numeric(NP3TOT),
+#     MCATOT = as.numeric(MCATOT)
+#   )
+# 
+# # ✅ Clean datasets (SEPARATE — do not overwrite)
+# 
+# # For general analysis (most plots)
+# df_clean <- df %>%
+#   filter(!is.na(NP3TOT))
+# 
+# # For motor vs cognition plot ONLY
+# df_moca <- df_clean %>%
+#   filter(!is.na(MCATOT))
+# 
+# 
+core_vars <- c("PATNO", "EVENT_ID", "NP3TOT", "AGE", "SEX")
+cog_vars <- c("MCATOT")
+
+ np3_vars <- c(
+   "NP3PTRMR", "NP3KTRMR",
+   "NP3RIGN", "NP3RIGRU", "NP3RIGLU",
+   "NP3BRADY",
+   "NP3FTAPR", "NP3FTAPL",
+   "NP3GAIT", "NP3PSTBL",
+   "NP3SPCH", "NP3FACXP", "NP3PTRML", "NP3KTRML"
+ )
+# 
+# #
+# df_clean_final <- df_clean %>%
+#   select(all_of(c(core_vars, np3_vars)))
+# 
+# df_moca_final <- df_moca %>%
+#   select(all_of(c(core_vars, cog_vars)))
+# 
+# 
+# # Inspect
+# skimr::skim(df_clean_final)
+# 
+# output_path <- "C:/Users/Malik/Desktop/Module_5/Cleaned_Data"
+# 
+# write.csv(df_clean_final, paste0(output_path, "/df_clean.csv"), row.names = FALSE)
+# write.csv(df_moca_final, paste0(output_path, "/df_moca.csv"), row.names = FALSE)
+
+# Read Cleaned final csvs
+
+df_clean_final <- read.csv("C:/Users/Malik/Desktop/Module_5/Cleaned_Data/df_clean.csv", na.strings = c("", "NA"))  # REPLACE PATH HERE!!!!!!
+df_moca_final <- read.csv("C:/Users/Malik/Desktop/Module_5/Cleaned_Data/df_moca.csv", na.strings = c("", "NA"))    # REPLACE PATH HERE!!!!!!
+
+df_clean_final$SEX <- factor(df_clean_final$SEX, 
+                             levels = c(0, 1), 
+                             labels = c("Female", "Male"))
+
+
+# Count unique patients in df_clean_final
+length(unique(df_clean_final$PATNO))
+
+# Count unique patients in df_moca_final
+length(unique(df_moca_final$PATNO))
+```
+
+```{r NP3TOT_hist, echo=FALSE}
+# =========================================
+# MOTOR SEVERITY DISTRIBUTION (HISTOGRAM)
+# =========================================
+
+# 1. Create the plot object
+p_severity <- ggplot(df_clean_final, aes(x = NP3TOT)) +
+  
+  # Histogram layer
+  geom_histogram(
+    binwidth = 2,
+    fill = "#800000",
+    color = "white",
+    alpha = 0.8
+  ) +
+  
+  # Restrict x-axis range for clearer focus
+  coord_cartesian(xlim = c(0, 70)) +
+  
+  # Plot labels
+  labs(
+    title = "Distribution of Motor Severity",
+    x = "NP3 Total Score",
+    y = "Frequency"
+  ) +
+  
+  # Base theme
+  theme_minimal() +
+  
+  # Custom styling
+  theme(
+    # Remove grid lines for cleaner look
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    
+    # Title formatting
+    plot.title = element_text(
+      size = 42,
+      face = "bold",
+      hjust = 0.5
+    ),
+    
+    # Axis labels
+    axis.title = element_text(size = 34),
+    
+    # Axis tick labels
+    axis.text = element_text(size = 30)
+    
+    # (Legend not used here, but kept consistent if added later)
+  )
+
+# 2. Display the plot
+p_severity
+
+# 3. Save plot as SVG with specified dimensions
+# ggsave(
+#   filename = "C:/Users/Malik/Desktop/Module_5/motor_severity_distribution.svg", # uncomment and replace with respective path
+#   plot = p_severity,
+#   width = 6,
+#   height = 5.2,
+#   units = "in",
+#   scale = 2
+# )
+
+```
+
+
+```{r motor_cog_scatter, echo=FALSE}
+# =========================================
+# MOTOR vs COGNITION HEAT-SCATTER PLOT
+# =========================================
+
+# 1. Create the high-contrast heat-scatter plot
+p <- ggplot(df_moca_final, aes(x = NP3TOT, y = MCATOT)) +
+  
+  # Point density layer (with jitter to reduce overplotting)
+  geom_pointdensity(
+    position = position_jitter(width = 0.3, height = 0.3),
+    adjust = 3,
+    size = 1
+  ) +
+  
+  # Restrict x-axis range
+  coord_cartesian(xlim = c(0, 80)) +
+  
+  # Custom high-contrast density color scale
+  scale_color_gradientn(
+    colors = c(
+      "#3B0000", "#7A0000", "#B30000",
+      "#E60000", "#FF4D00", "#FF9900", "#FFD700"
+    ),
+    name = "Patient Density"
+  ) +
+  
+  # Density contour lines (white underlay + black overlay for contrast)
+  geom_density_2d(color = "white", linewidth = 1.7, alpha = 1) +
+  geom_density_2d(color = "black", linewidth = 1.2, alpha = 1) +
+  
+  # Linear trend line (highlight + outline for visibility)
+  geom_smooth(method = "lm", color = "pink", linewidth = 2, se = TRUE) +
+  geom_smooth(method = "lm", color = "#1A1A1A", linewidth = 1.4, se = TRUE) +
+  
+  # Labels
+  labs(
+    title = "Motor Severity vs Cognitive Function",
+    x = "Motor Severity (NP3 Total Score)",
+    y = "Cognitive Score (MoCA Total)"
+  ) +
+  
+  # Base theme
+  theme_minimal() +
+  
+  # Custom styling
+  theme(
+    # Remove grid and background clutter
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    
+    # Add clear axis lines
+    axis.line = element_line(color = "black"),
+    
+    # Legend formatting
+    legend.position = "bottom",
+    legend.box = "horizontal",
+    legend.title = element_text(size = 28),
+    legend.text = element_text(size = 22),
+    
+    # Plot background
+    plot.background = element_rect(fill = "white", color = NA),
+    
+    # Title formatting
+    plot.title = element_text(
+      size = 42,
+      face = "bold",
+      hjust = 0.5
+    ),
+    
+    # Axis labels and ticks
+    axis.title = element_text(size = 34),
+    axis.text  = element_text(size = 30)
+  ) +
+  
+  # Force horizontal colorbar
+  guides(
+    color = guide_colorbar(
+      title.position = "top",
+      barwidth = 25
+    )
+  )
+
+#2. Save plot as SVG
+ggsave(
+  filename = "motor_severity_cog_scatter.svg", 
+  plot = p,
+  width = 7.1,
+  height = 5,
+  units = "in",
+  scale = 2
+)
+
+# 3. Display plot
+print(p)
+```
+
+```{r motor_age_scatter, echo=FALSE}
+# =========================================
+# AGE vs MOTOR SEVERITY HEAT-SCATTER PLOT
+# =========================================
+
+# 1. Create the plot
+p_age <- ggplot(df_clean_final, aes(x = AGE, y = NP3TOT)) +
+  
+  # Point density layer (heat effect)
+  geom_pointdensity(
+    adjust = 2,
+    size = 1,
+    alpha = 0.8
+  ) +
+  
+  # High-contrast density color scale (dark red → gold)
+  scale_color_gradientn(
+    colors = c(
+      "#3B0000", "#7A0000", "#B30000",
+      "#E60000", "#FF4D00", "#FF9900", "#FFD700"
+    ),
+    name = "Patient Density"
+  ) +
+  
+  # Linear trend line (black for maximum contrast)
+  geom_smooth(
+    method = "lm",
+    color = "black",
+    linewidth = 1,
+    se = FALSE
+  ) +
+  
+  # Axis labels and title
+  labs(
+    title = "Age vs Motor Severity",
+    x = "Age",
+    y = "NP3 Total Score"
+  ) +
+  
+  # Base theme
+  theme_minimal(base_size = 14) +
+  
+  # Custom styling
+  theme(
+    # Remove grid lines
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    
+    # Axis structure
+    axis.line = element_line(color = "black", linewidth = 0.5),
+    
+    # Title styling
+    plot.title = element_text(
+      size = 22,
+      face = "bold",
+      hjust = 0.5
+    ),
+    
+    # Axis labels
+    axis.title = element_text(size = 18),
+    
+    # Axis tick labels
+    axis.text = element_text(size = 15),
+    
+    # Legend styling
+    legend.title = element_text(size = 13),
+    legend.text  = element_text(size = 11),
+    
+    # Background
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+
+# 2. Display plot
+print(p_age)
+
+# 3. Save plot as SVG
+ggsave(
+  filename = "Age_vs_Motor_Heatscatter.svg",
+  plot = p_age,
+  device = "svg",
+  width = 8,
+  height = 5,
+  units = "in",
+  scale = 2
+)
+```
+
+```{r corr_heatmap, echo=FALSE}
+# =========================================
+# CORRELATION HEATMAP: MOTOR SYMPTOMS
+# =========================================
+
+# 1. Select and rename variables for readability
+df_corr <- df_clean_final %>%
+  select(all_of(np3_vars)) %>%
+  rename(
+    `Postural Tremor of RH` = NP3PTRMR,
+    `Postural Tremor of LH` = NP3PTRML,
+    `Kinetic Tremor of RH` = NP3KTRMR,
+    `Kinetic Tremor of LH` = NP3KTRML,
+    `Rigidity of neck` = NP3RIGN,
+    `Rigidity of RUE` = NP3RIGRU,
+    `Rigidity of LUE` = NP3RIGLU,
+    `Body Bradykinesia` = NP3BRADY,
+    `Finger Taps, RH` = NP3FTAPR,
+    `Finger Taps, LH` = NP3FTAPL,
+    Gait = NP3GAIT,
+    `Postural Stability` = NP3PSTBL,
+    Speech = NP3SPCH,
+    `Facial Expression` = NP3FACXP
+  )
+
+# 2. Compute Spearman correlation matrix
+cor_matrix <- cor(
+  df_corr,
+  use = "complete.obs",
+  method = "spearman"
+)
+
+# 3. Hierarchical clustering for ordering
+hc <- hclust(as.dist(1 - abs(cor_matrix)))
+cor_matrix_ord <- cor_matrix[hc$order, hc$order]
+
+# 4. Convert matrix to long format
+cor_df <- as.data.frame(cor_matrix_ord) %>%
+  rownames_to_column("Var1") %>%
+  pivot_longer(
+    cols = -Var1,
+    names_to = "Var2",
+    values_to = "value"
+  )
+
+# 5. Remove diagonal + duplicate pairs
+cor_df <- cor_df %>%
+  filter(Var1 != Var2) %>%
+  mutate(
+    Var1 = factor(Var1, levels = rownames(cor_matrix_ord)),
+    Var2 = factor(Var2, levels = colnames(cor_matrix_ord))
+  ) %>%
+  filter(as.numeric(Var1) < as.numeric(Var2))
+
+# 6. Scaling reference values
+min_val <- min(cor_df$value, na.rm = TRUE)
+max_abs <- max(abs(cor_df$value), na.rm = TRUE)
+
+# 7. Plot correlation heatmap
+p_corr <- ggplot(cor_df, aes(x = Var1, y = Var2, fill = value)) +
+  
+  # Heatmap tiles
+  geom_tile(color = "white") +
+  
+  # Diverging colour scale
+  scale_fill_gradient2(
+    low = "#2166AC",
+    mid = "white",
+    high = "#B2182B",
+    midpoint = 0,
+    limits = c(0, max_abs)
+  ) +
+  
+  # Square layout
+  coord_fixed() +
+  
+  # Base theme
+  theme_minimal(base_size = 11) +
+  
+  # Styling
+  theme(
+    panel.grid = element_blank(),
+    
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1,
+      vjust = 1,
+      size = 11,
+      margin = margin(t = 10, r = 6)
+    ),
+    
+    axis.text.y = element_text(size = 12),
+    
+    axis.line = element_line(color = "black", linewidth = 0.5),
+    
+    plot.title = element_text(
+      size = 22,
+      face = "bold",
+      hjust = 0.5
+    ),
+    
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 11),
+    
+    plot.background = element_rect(fill = "white", color = NA)
+  ) +
+  
+  labs(
+    title = "Correlation Between Motor Symptoms",
+    x = "",
+    y = "",
+    fill = "Correlation"
+  )
+
+# 8. Display plot
+print(p_corr)
+
+# 9. Save plot
+ggsave(
+  filename = "Age_vs_Motor_Heatscatter.svg",
+  plot = p_corr,
+  device = "svg",
+  width = 6.7,
+  height = 6.1,
+  units = "in"
+)
+```
+
+```{r np3_pca, echo=FALSE}
+
+# =========================================
+# PCA: MOTOR SYMPTOM STRUCTURE ANALYSIS
+# =========================================
+
+# -------------------------
+# 1. PCA PREPARATION
+# -------------------------
+
+# Select motor symptom variables and remove missing values
+pca_data <- df_clean_final %>%
+  select(all_of(np3_vars)) %>%
+  drop_na()
+
+# Run PCA with scaling
+pca_res <- prcomp(pca_data, scale. = TRUE)
+
+# -------------------------
+# 2. EXPLORATORY OUTPUT
+# -------------------------
+
+# Scree plot (variance explained per component)
+plot(pca_res, type = "l", main = "Scree Plot")
+
+# PCA scores (patient-level coordinates in PC space)
+pca_df <- as.data.frame(pca_res$x)
+
+# Loadings (variable contributions to PCs)
+loadings <- as.data.frame(pca_res$rotation)
+loadings$Feature <- rownames(loadings)
+
+# Optional scaling factor (for vector plots if needed later)
+scaling_factor <- 8
+
+# -------------------------
+# 3. PCA VISUALISATION
+# -------------------------
+
+# Create PCA scatter plot with density overlay
+p_pca <- ggplot(pca_df, aes(x = PC1, y = PC2)) +
+  
+  # Density-based point colouring
+  geom_pointdensity(adjust = 3, size = 1, alpha = 0.5) +
+  
+  # Density colour scale
+  scale_color_gradientn(
+    colors = c(
+      "#3B0000", "#E60000",
+      "#FF4D00", "#FF9900", "#FFD700"
+    ),
+    name = "Density"
+  ) +
+  
+  # Labels
+  labs(
+    title = "Clinical Patterns of Motor Symptoms",
+    x = "PC1 (Overall Motor Severity)",
+    y = "PC2 (Tremor Severity)"
+  ) +
+  
+  # Base theme
+  theme_minimal() +
+  
+  # Custom styling
+  theme(
+    # Remove grid lines
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    
+    # Axis structure
+    axis.line = element_line(color = "black", linewidth = 0.5),
+    
+    # Title styling
+    plot.title = element_text(
+      size = 22,
+      face = "bold",
+      hjust = 0.5
+    ),
+    
+    # Axis labels
+    axis.title = element_text(size = 18),
+    
+    # Axis tick labels
+    axis.text = element_text(size = 15),
+    
+    # Legend styling
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 11),
+    
+    # Background
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+
+# -------------------------
+# 4. SAVE OUTPUT
+# -------------------------
+
+ggsave(
+  filename = "np3_PCA.svg",
+  plot = p_pca,
+  device = "svg",
+  width = 14.7,
+  height = 9.6,
+  units = "in"
+)
+
+# Display PCA plot
+print(p_pca)
+
+# -------------------------
+# 5. PCA FEATURE INSIGHTS
+# -------------------------
+
+# Top contributing features for PC1 and PC2
+loadings %>%
+  select(Feature, PC1, PC2) %>%
+  pivot_longer(
+    cols = c(PC1, PC2),
+    names_to = "PC",
+    values_to = "Weight"
+  ) %>%
+  group_by(PC) %>%
+  slice_max(order_by = abs(Weight), n = 5) %>%
+  arrange(PC, desc(Weight))
+
+# Full loading matrix inspection
+print(pca_res$rotation[, 1:2])
+```
+
